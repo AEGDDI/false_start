@@ -1,0 +1,161 @@
+---
+title: "Data Cleaning"
+author: "Alessandro Di Mattia"
+date: "2023-09-18"
+output: pdf_document
+---
+
+```{r clear-memory}
+# Clear memory
+rm(list = ls())
+```
+
+```{r load-libraries}
+# Load required libraries
+library(xtable)   # Export tables to LaTeX
+library(readxl)   # Read xlsx files
+library(writexl)  # Export xlsx files
+library(dplyr)    # Data manipulation
+library(ggplot2)  # Data visualization
+library(eatATA)   # Dummy to factor function
+library(forcats)  # Function fct_relevel
+```
+
+```{r setup, include=FALSE}
+# Data preparation
+
+# Automatically set the user and define paths
+user <- Sys.getenv("USERNAME")
+input_path <- paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/out/")
+setwd(dirname(input_path))
+
+# Load dataset
+df <- read_excel(paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/in/data.xlsx"))
+```
+
+```{r clean-data}
+# Standardize variable names
+names(df) <- tolower(names(df))
+names(df) <- gsub(" ", "", names(df))
+
+# Conditional false start detection
+df$cond_fs <- ifelse(grepl("#", df$reactiontime), 1, 0)
+df$racefalsestart <- ifelse(df$cond_fs == 1, 1, df$racefalsestart)
+df$falsestart <- ifelse(df$cond_fs == 1, 1, df$falsestart)
+
+# Clean reaction times
+df$reactiontime <- as.numeric(gsub("[^0-9.-]", "", df$reactiontime))
+
+# Create running time
+df$runningtime <- df$finishingtime - df$reactiontime
+
+# Clean country names
+df$country <- trimws(df$country)
+df <- df %>% mutate(country = ifelse(country == "TRI", "TTO", country))
+
+# Numeric conversion
+cols.num <- c("reactiontime", "indivpersonalbest", "indivseasonbest")
+df[cols.num] <- sapply(df[cols.num], as.numeric)
+
+# Categorical variables for competition and stages
+df <- dummiesToFactor(df, dummies = c("100m", "110mh", "100mh"), facVar = "discipline")
+df <- dummiesToFactor(df, dummies = c("preliminary", "heat", "semi", "final"), facVar = "stage")
+df$stage <- fct_relevel(df$stage, "preliminary", "heat", "semi", "final")
+
+# Add reaction time in milliseconds
+df$reactiontime_ms <- df$reactiontime * 1000
+
+# Create rules
+df <- df %>% mutate(rule = case_when(
+  event < 2003 ~ "rule 1",
+  event < 2010 ~ "rule 2",
+  event >= 2010 ~ "rule 3"
+))
+df <- df %>% mutate(
+  rule1 = ifelse(rule == "rule 1", 1, 0),
+  rule2 = ifelse(rule == "rule 2", 1, 0),
+  rule3 = ifelse(rule == "rule 3", 1, 0)
+)
+
+# Round numeric columns
+df <- df %>% mutate_if(is.numeric, round, digits = 4)
+
+# Clean first and last names
+df$firstname <- tolower(gsub("-.*", "", df$firstname))
+df$surname <- tolower(df$surname)
+
+# Convert and clean wind and lane
+df$wind <- as.numeric(df$wind)
+df$lane <- factor(df$lane)
+df <- df[!is.na(df$lane), ]
+
+# Create athlete ID
+df$athleteID <- paste(df$surname, gsub("/", "", df$dob), sep = "_")
+
+# Add early stages indicator
+df <- df %>% mutate(early_stages = ifelse(preliminary == 1 | heat == 1, 1, 0))
+```
+
+```{r add-dates}
+# Convert dates and calculate age
+df$dob_date <- as.Date(df$dob, origin = "1899-12-30")
+df$event_date <- as.Date(df$date, origin = "1899-12-30")
+df$age_at_event <- as.integer(difftime(df$event_date, df$dob_date, units = "days") / 365.25)
+```
+
+```{r filter-finalists}
+# Filter finalists
+finalists_df <- df %>% filter(final == 1 & discipline == "100m")
+
+# Event counts by gender
+finalists_event <- finalists_df %>% group_by(event, men) %>% summarise(count = n())
+
+# Semi-join for finalists
+df_finalists <- df %>% semi_join(finalists_df, by = c("athleteID", "event", "men", "discipline"))
+
+# Reaction time differences
+df2_hm_finalists <- df_finalists %>%
+  group_by(event, athleteID) %>%
+  arrange(date) %>%
+  mutate(
+    date_difference = as.numeric(date - lag(date), units = "days"),
+    difference = max(reactiontime_ms) - min(reactiontime_ms),
+    max_reactiontime = max(reactiontime_ms),
+    min_reactiontime = min(reactiontime_ms)
+  ) %>%
+  ungroup() %>%
+  filter(final == 1, !is.na(difference))
+
+# Add consistency indicators
+df2_hm_finalists <- df2_hm_finalists %>% mutate(
+  consistent = ifelse(difference < 20, 1, 0),
+  intermediate = ifelse(difference >= 20 & difference <= 50, 1, 0),
+  inconsistent = ifelse(difference > 50, 1, 0)
+)
+```
+
+```{r export-data}
+# Export datasets
+write_xlsx(df, paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/out/df.xlsx"))
+write_xlsx(df_finalists, paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/out/df_finalists.xlsx"))
+write_xlsx(finalists_df, paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/out/finalists_df.xlsx"))
+```
+
+```{r generate-report}
+# Generate a report of filtered data
+df_report <- df_finalists %>%
+  filter(final != 1) %>%
+  filter(!(qualifieddirect == 1 | qualifiedindirect == 1))
+
+print(df_report)
+```
+
+```{r}
+# Summary statistics
+summary(df$reactiontime)
+head(df[c("dob_date", "event_date", "age_at_event")])
+
+```
+
+
+
