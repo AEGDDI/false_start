@@ -139,7 +139,9 @@ df2_hm_finalists <- df2_hm_finalists %>% mutate(
 ```{r export-data}
 # Export datasets
 write_xlsx(df, paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/out/df.xlsx"))
+
 write_xlsx(df_finalists, paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/out/df_finalists.xlsx"))
+
 write_xlsx(finalists_df, paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/out/finalists_df.xlsx"))
 ```
 
