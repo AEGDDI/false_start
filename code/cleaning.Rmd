@@ -26,8 +26,6 @@ library(forcats)  # Function fct_relevel
 
 # Automatically set the user and define paths
 user <- Sys.getenv("USERNAME")
-input_path <- paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/out/")
-setwd(dirname(input_path))
 
 # Load dataset
 df <- read_excel(paste0("C:/Users/", user, "/Documents/GitHub/false_start_2/data/in/data.xlsx"))
@@ -45,6 +43,10 @@ df$falsestart <- ifelse(df$cond_fs == 1, 1, df$falsestart)
 
 # Clean reaction times
 df$reactiontime <- as.numeric(gsub("[^0-9.-]", "", df$reactiontime))
+
+missing_values <- sum(is.na(df$reactiontime))
+cat("Number of missing values in 'reactiontime':", missing_values, "\n")
+
 
 # Create running time
 df$runningtime <- df$finishingtime - df$reactiontime
